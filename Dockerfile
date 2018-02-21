@@ -1,11 +1,12 @@
-FROM linkyard/docker-helm:2.7.2
-LABEL maintainer "mario.siegenthaler@linkyard.ch"
+FROM opendoor/helm as helm
+FROM opendoor/kubectl as kubectl
 
-RUN apk add --update --upgrade --no-cache jq bash nodejs curl yarn
+FROM alpine:3.7
 
-ENV KUBERNETES_VERSION 1.8.4
-RUN curl -L -o /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl; \
-    chmod +x /usr/local/bin/kubectl
+COPY --from=helm /bin/helm /usr/local/bin/helm
+COPY --from=kubectl /usr/local/bin/kubectl /usr/local/bin/kubectl
+
+RUN apk add --update --upgrade --no-cache jq bash nodejs yarn
 
 RUN yarn global add typescript
 
