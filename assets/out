@@ -58,7 +58,8 @@ is_deployed() {
   if [ -n "$1" ]; then
     set +e
     set +o pipefail
-    helm history --tiller-namespace $tiller_namespace $1 2>&1 | grep "DEPLOYED" > /dev/null
+    # Note: drop the `--max 25` once this upstream helm issue is fixed (still broken in 2.8.1)
+    helm history --max 25 --tiller-namespace $tiller_namespace $1 2>&1 | grep "DEPLOYED" > /dev/null
     if [ $? = 0 ]; then
       # exists
       echo true
