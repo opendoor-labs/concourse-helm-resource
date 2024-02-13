@@ -136,8 +136,9 @@ current_deployed() {
 #   - namespace: The Kubernetes namespace where the release is deployed
 # This function is meant to be run in the background concurrently with the helm upgrade command
 helm_log_upgrade() {
+  local helm_pid=$1
   app=$(echo "$release" | cut -d'-' -f1)
-  while [ true ]
+  while kill -0 $helm_pid 2>/dev/null
   do
     echo "=========================================================="
     date
@@ -249,7 +250,7 @@ helm_upgrade() {
     helm_pid=$!
     tail -f "$logfile" &
     echo "helm_pid: $helm_pid"
-    helm_log_upgrade &
+    helm_log_upgrade $helm_pid &
     wait $helm_pid
     helm_exit_status=$?
     if [ "$helm_exit_status" -ne 0 ]; then
