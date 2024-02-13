@@ -127,6 +127,14 @@ current_deployed() {
   $helm_bin history $tls_flag --tiller-namespace $tiller_namespace --max 1 $release | grep "DEPLOYED"
 }
 
+# Function: helm_log_upgrade
+# Description: This function continuously checks the status of pods in a Kubernetes namespace after a Helm upgrade. 
+# It retrieves the pods with a specific label and prints their names and statuses. 
+# If a pod is not in the "Running" state, it also prints the pod's logs and events.
+# Parameters:
+#   - release: The name of the Helm release
+#   - namespace: The Kubernetes namespace where the release is deployed
+# This function is meant to be run in the background concurrently with the helm upgrade command
 helm_log_upgrade() {
   app=$(echo "$release" | cut -d'-' -f1)
   while [ true ]
@@ -236,6 +244,8 @@ helm_upgrade() {
     echo "Running command helm ${helm_echo_args[@]}"
     $helm_bin "${helm_args[@]}" $tls_flag > "$logfile" &
     # note that we have to remove the tee in the above line because if we don't the helm_pid will be the pid of the tee process
+    # we are running both $helm_bin and helm_log_upgrade in the background so we can see the logs of the helm upgrade
+    # in near real-time while also tailing the logs of the pods in the namespace
     helm_pid=$!
     tail -f "$logfile" &
     echo "helm_pid: $helm_pid"
@@ -247,6 +257,11 @@ helm_upgrade() {
       echo "Dumping event logs in namespace $namespace for release $release ..."
       echo "=================================================================================="
       cmd="kubectl get events --namespace $namespace --sort-by='.lastTimestamp' | grep -i $release"
+      echo "Running command $cmd"
+      eval $cmd
+      echo "Helm history ..."
+      echo "=================================================================================="
+      cmd="helm history $release --tiller-namespace $tiller_namespace"
       echo "Running command $cmd"
       eval $cmd
     fi
