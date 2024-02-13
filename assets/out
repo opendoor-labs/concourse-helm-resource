@@ -249,10 +249,14 @@ helm_upgrade() {
     # in near real-time while also tailing the logs of the pods in the namespace
     helm_pid=$!
     tail -f "$logfile" &
+    tail_pid=$!
     echo "helm_pid: $helm_pid"
     helm_log_upgrade $helm_pid &
+    helm_log_pid=$!
     wait $helm_pid
     helm_exit_status=$?
+    kill -9 $tail_pid
+    kill -9 $helm_log_pid
     if [ "$helm_exit_status" -ne 0 ]; then
       echo "$helm_bin failed with exit code $helm_exit_status"      
       echo "Dumping event logs in namespace $namespace for release $release ..."
@@ -267,13 +271,11 @@ helm_upgrade() {
       eval $cmd
     fi
   fi
-
+  
   if [ -n "$wait" ] && [ "$wait" -gt "0" ]; then
     echo "Waiting for $wait Seconds"
     sleep $wait
   fi
-  echo "exiting..."
-  exit $helm_exit_status
 }
 
 helm_delete() {
