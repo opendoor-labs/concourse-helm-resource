@@ -269,6 +269,9 @@ helm_upgrade() {
       cmd="helm history $release --tiller-namespace $tiller_namespace"
       echo "Running command $cmd"
       eval $cmd
+      echo "Rolling back to previous revision ..."
+      set -e
+      exit $helm_exit_status
     fi
   fi
   
