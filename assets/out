@@ -138,8 +138,9 @@ helm_log_upgrade() {
     while IFS= read -r line; do
       podName=$(echo $line | awk '{print $1}')
       podStatus=$(echo $line | awk '{print $3}')
-      echo "Pod $podName is in $podStatus state"    
-      if [ "$podStatus" != "Running" ]; then
+      echo "Pod $podName is in $podStatus state"
+      if [ "$podStatus" != "Running" ]
+      then
         echo "Logs of $podName"
         kubectl -n $namespace logs $podName
         echo "Events for pod $podName:"
