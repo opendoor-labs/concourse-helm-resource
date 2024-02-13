@@ -244,7 +244,7 @@ helm_upgrade() {
     helm_exit_status=$?
     if [ "$helm_exit_status" -ne 0 ]; then
       echo "$helm_bin failed with exit code $helm_exit_status"      
-      echo "Dumping event logs for release $release ..."
+      echo "Dumping event logs in namespace $namespace for release $release ..."
       echo "=================================================================================="
       cmd="kubectl get events --namespace $namespace --sort-by='.lastTimestamp' | grep -i $release"
       echo "Running command $cmd"
