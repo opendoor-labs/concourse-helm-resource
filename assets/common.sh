@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 setup_kubernetes() {
   payload=$1

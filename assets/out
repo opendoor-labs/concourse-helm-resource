@@ -1,8 +1,5 @@
 #!/bin/bash
 
-set -e
-set -o pipefail
-
 exec 3>&1 # make stdout available as fd 3 for the result
 exec 1>&2 # redirect all output to stderr for logging
 
@@ -130,6 +127,29 @@ current_deployed() {
   $helm_bin history $tls_flag --tiller-namespace $tiller_namespace --max 1 $release | grep "DEPLOYED"
 }
 
+helm_log_upgrade() {
+  app=$(echo "$release" | cut -d'-' -f1)
+  while [ true ]
+  do
+    echo "=========================================================="
+    date
+    echo "namespace: $namespace, label: app=$app"
+    pods=$(kubectl -n $namespace get pods -l app=$app --no-headers )
+    while IFS= read -r line; do
+      podName=$(echo $line | awk '{print $1}')
+      podStatus=$(echo $line | awk '{print $3}')
+      echo "Pod $podName is in $podStatus state"    
+      if [ "$podStatus" != "Running" ]; then
+        echo "Logs of $podName"
+        kubectl -n $namespace logs $podName
+        echo "Events for pod $podName:"
+        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag'
+      fi
+    done <<< "$pods"    
+    sleep 15
+  done
+}
+
 helm_upgrade() {
   non_diff_args=("--namespace" "$namespace")
   if [ "$release" = "" ]; then
@@ -208,18 +228,35 @@ helm_upgrade() {
       $helm_bin diff "${helm_diff_args[@]}" | tee "$logfile"
     fi
   fi
-
+  helm_exit_status=0
   if [ "$exit_after_diff" = true ]; then
     echo "Exiting after diff"
   else
-    echo "Running command helm ${helm_echo_args[@]} | tee $logfile"
-    $helm_bin "${helm_args[@]}" $tls_flag | tee "$logfile"
+    echo "Running command helm ${helm_echo_args[@]}"
+    $helm_bin "${helm_args[@]}" $tls_flag > "$logfile" &
+    # note that we have to remove the tee in the above line because if we don't the helm_pid will be the pid of the tee process
+    helm_pid=$!
+    tail -f "$logfile" &
+    echo "helm_pid: $helm_pid"
+    helm_log_upgrade &
+    wait $helm_pid
+    helm_exit_status=$?
+    if [ "$helm_exit_status" -ne 0 ]; then
+      echo "$helm_bin failed with exit code $helm_exit_status"      
+      echo "Dumping event logs for release $release ..."
+      echo "=================================================================================="
+      cmd="kubectl get events --namespace $namespace --sort-by='.lastTimestamp' | grep -i $release"
+      echo "Running command $cmd"
+      eval $cmd
+    fi
   fi
 
   if [ -n "$wait" ] && [ "$wait" -gt "0" ]; then
     echo "Waiting for $wait Seconds"
     sleep $wait
   fi
+  echo "exiting..."
+  exit $helm_exit_status
 }
 
 helm_delete() {
