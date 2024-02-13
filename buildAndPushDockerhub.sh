@@ -1,3 +1,5 @@
+# Note ... this is just a one off script
+# the building of this script should be moved to CiCd
 export PUSH_FLAG="--push"
 export BUILD_FLAG="buildx build --platform linux/amd64"
 #export TAG=2.18.0
