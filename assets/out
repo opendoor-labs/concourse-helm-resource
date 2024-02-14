@@ -135,25 +135,27 @@ current_deployed() {
 #   - release: The name of the Helm release
 #   - namespace: The Kubernetes namespace where the release is deployed
 # This function is meant to be run in the background concurrently with the helm upgrade command
+podLogsDir=/tmp/pod_logs
 helm_log_upgrade() {
-  local helm_pid=$1
+  local helm_pid=$1  
+  mkdir -p $podLogsDir
   app=$(echo "$release" | cut -d'-' -f1)
   while kill -0 $helm_pid 2>/dev/null
-  do
-    echo "=========================================================="
-    date
-    echo "namespace: $namespace, label: app=$app"
+  do    
     pods=$(kubectl -n $namespace get pods -l app=$app --no-headers )
     while IFS= read -r line; do
       podName=$(echo $line | awk '{print $1}')
-      podStatus=$(echo $line | awk '{print $3}')
-      echo "Pod $podName is in $podStatus state"
+      podStatus=$(echo $line | awk '{print $3}')    
+      outfile=$podLogsDir/$podName.log  
       if [ "$podStatus" != "Running" ]
       then
-        echo "Logs of $podName"
-        kubectl -n $namespace logs $podName
-        echo "Events for pod $podName:"
-        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag'
+        echo "Pod $podName is in $podStatus state" > $outfile
+        echo "Logs of $podName" > $podLogsDir/$podName.log >> $outfile
+        kubectl -n $namespace logs $podName >> $outfile
+        echo "Events for pod $podName:" >> $outfile
+        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile
+      else
+        rm -f $outfile
       fi
     done <<< "$pods"    
     sleep 15
@@ -255,10 +257,17 @@ helm_upgrade() {
     helm_log_pid=$!
     wait $helm_pid
     helm_exit_status=$?
-    kill -9 $tail_pid
-    kill -9 $helm_log_pid
+    kill -9 $tail_pid 
+    wait $tail_pid 2>/dev/null # removes the "Killed" message
+    kill -9 $helm_log_pid 
+    wait $helm_log_pid 2>/dev/null # removes the "Killed" message
     if [ "$helm_exit_status" -ne 0 ]; then
-      echo "$helm_bin failed with exit code $helm_exit_status"      
+      echo "$helm_bin failed with exit code $helm_exit_status"
+      echo "Dumping pod logs in namespace $namespace for release $release ..."
+      for f in $podLogsDir/*; do
+        echo "=================================================================================="
+        cat $f
+      done
       echo "Dumping event logs in namespace $namespace for release $release ..."
       echo "=================================================================================="
       cmd="kubectl get events --namespace $namespace --sort-by='.lastTimestamp' | grep -i $release"
