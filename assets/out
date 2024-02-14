@@ -130,7 +130,7 @@ current_deployed() {
 # Function: helm_log_upgrade
 # Description: This function continuously checks the status of pods in a Kubernetes namespace after a Helm upgrade. 
 # It retrieves the pods with a specific label and prints their names and statuses. 
-# If a pod is not in the "Running" state, it also prints the pod's logs and events.
+# If a pod is not in the "Running" state, it prints the pod's logs and events.
 # Parameters:
 #   - release: The name of the Helm release
 #   - namespace: The Kubernetes namespace where the release is deployed
@@ -146,16 +146,15 @@ helm_log_upgrade() {
     while IFS= read -r line; do
       podName=$(echo $line | awk '{print $1}')
       podStatus=$(echo $line | awk '{print $3}')    
-      outfile=$podLogsDir/$podName.log  
+      outfile=$podLogsDir/$podName.log
+      rm -f $outfile
       if [ "$podStatus" != "Running" ]
       then
-        echo "Pod $podName is in $podStatus state" > $outfile
-        echo "Logs of $podName" > $podLogsDir/$podName.log >> $outfile
-        kubectl -n $namespace logs $podName >> $outfile
-        echo "Events for pod $podName:" >> $outfile
-        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile
-      else
-        rm -f $outfile
+        echo "Pod $podName is in $podStatus state" > $outfile 2>&1
+        echo "Logs of $podName" >> $outfile 2>&1
+        kubectl -n $namespace logs $podName >> $outfile 2>&1
+        echo "Events for pod $podName:" >> $outfile 2>&1
+        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile 2>&1
       fi
     done <<< "$pods"    
     sleep 15
