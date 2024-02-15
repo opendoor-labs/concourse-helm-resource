@@ -152,9 +152,12 @@ helm_log_upgrade() {
       then
         echo "Pod $podName is in $podStatus state" > $outfile 2>&1
         echo "Logs of $podName" >> $outfile 2>&1
+        echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
         kubectl -n $namespace logs $podName >> $outfile 2>&1
+        echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
         echo "Events for pod $podName:" >> $outfile 2>&1
         kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile 2>&1
+        echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
       fi
     done <<< "$pods"    
     sleep 15
@@ -262,17 +265,28 @@ helm_upgrade() {
     wait $helm_log_pid 2>/dev/null # removes the "Killed" message
     if [ "$helm_exit_status" -ne 0 ]; then
       echo "$helm_bin failed with exit code $helm_exit_status"
-      echo "Dumping pod logs in namespace $namespace for release $release ..."
+      echo "namespace: $namespace release: $release"
+      echo "*******************"
+      echo "* Pod Logs/Events *"
+      echo "*******************"
+      echo ""
       for f in $podLogsDir/*; do
         echo "=================================================================================="
         cat $f
       done
-      echo "Dumping event logs in namespace $namespace for release $release ..."
-      echo "=================================================================================="
+      echo ""
+      echo "******************"
+      echo "* kubectl events *"
+      echo "******************"
+      echo ""
       cmd="kubectl get events --namespace $namespace --sort-by='.lastTimestamp' | grep -i $release"
       echo "Running command $cmd"
       eval $cmd
-      echo "Helm history ..."
+      echo ""
+      echo "****************"
+      echo "* helm history *"
+      echo "****************"
+      echo ""
       echo "=================================================================================="
       cmd="helm history $release --tiller-namespace $tiller_namespace"
       echo "Running command $cmd"
