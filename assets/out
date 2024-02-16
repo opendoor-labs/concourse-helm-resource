@@ -271,7 +271,7 @@ helm_upgrade() {
     helm_exit_status=$?
     kill $tail_pid 
     wait $tail_pid 2>/dev/null # removes the "Killed" message
-    wait $helm_log_pid 2>/dev/null # removes the "Killed" message
+    wait $helm_log_pid 2>/dev/null
     if [ "$helm_exit_status" -ne 0 ]; then
       echo "$helm_bin failed with exit code $helm_exit_status"
       echo "namespace: $namespace release: $release"
