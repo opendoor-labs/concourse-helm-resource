@@ -154,6 +154,8 @@ helm_log_upgrade() {
         echo "Logs of $podName" >> $outfile 2>&1
         echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
         kubectl -n $namespace logs $podName >> $outfile 2>&1
+        echo "--previous (if applicable) -------------------------------------------------------" >> $outfile 2>&1
+        kubectl -n $namespace logs $podName --previous >> $outfile 2>&1
         echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
         echo "Events for pod $podName:" >> $outfile 2>&1
         kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile 2>&1
@@ -267,7 +269,7 @@ helm_upgrade() {
       echo "$helm_bin failed with exit code $helm_exit_status"
       echo "namespace: $namespace release: $release"
       echo "*******************"
-      echo "* Pod Logs/Events *"
+      echo "* pod Logs/Events *"
       echo "*******************"
       echo ""
       for f in $podLogsDir/*; do
