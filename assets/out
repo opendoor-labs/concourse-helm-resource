@@ -152,10 +152,13 @@ helm_log_upgrade() {
       then
         echo "Pod $podName is in $podStatus state" > $outfile 2>&1
         echo "Logs of $podName" >> $outfile 2>&1
-        echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
-        kubectl -n $namespace logs $podName >> $outfile 2>&1
-        echo "--previous (if applicable) -------------------------------------------------------" >> $outfile 2>&1
-        kubectl -n $namespace logs $podName --previous >> $outfile 2>&1
+        for container in $(kubectl -n $namespace get pod $podName -o jsonpath='{.spec.containers[*].name}')
+        do
+          if [[ $container != *"istio"* ]]; then
+            echo "container $container:" >> $outfile 2>&1
+            kubectl -n $namespace logs $podName -c $container >> $outfile 2>&1
+          fi
+        done
         echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
         echo "Events for pod $podName:" >> $outfile 2>&1
         kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile 2>&1
