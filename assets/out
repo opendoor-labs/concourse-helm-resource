@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -e
 exec 3>&1 # make stdout available as fd 3 for the result
 exec 1>&2 # redirect all output to stderr for logging
 
@@ -140,6 +141,9 @@ helm_log_upgrade() {
   local helm_pid=$1  
   mkdir -p $podLogsDir
   app=$(echo "$release" | cut -d'-' -f1)
+  # This while loop checks if the process $helm_pid is still running.
+  # The kill command with the signal 0 is used to check if the process exists without actually sending a SIGTERM signal.
+  # The output of the kill command is redirected to /dev/null to suppress any error messages.
   while kill -0 $helm_pid 2>/dev/null
   do    
     pods=$(kubectl -n $namespace get pods -l app=$app --no-headers )
@@ -150,19 +154,19 @@ helm_log_upgrade() {
       rm -f $outfile
       if [ "$podStatus" != "Running" ]
       then
-        echo "Pod $podName is in $podStatus state" > $outfile 2>&1
-        echo "Logs of $podName" >> $outfile 2>&1
+        echo "Pod $podName is in $podStatus state" > $outfile
+        echo "Logs of $podName" >> $outfile
         for container in $(kubectl -n $namespace get pod $podName -o jsonpath='{.spec.containers[*].name}')
         do
           if [[ $container != *"istio"* ]]; then
-            echo "container $container:" >> $outfile 2>&1
-            kubectl -n $namespace logs $podName -c $container >> $outfile 2>&1
+            echo "container $container:" >> $outfile
+            kubectl -n $namespace logs $podName -c $container >> $outfile
           fi
         done
-        echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
-        echo "Events for pod $podName:" >> $outfile 2>&1
-        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile 2>&1
-        echo "----------------------------------------------------------------------------------" >> $outfile 2>&1
+        echo "----------------------------------------------------------------------------------" >> $outfile
+        echo "Events for pod $podName:" >> $outfile
+        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile
+        echo "----------------------------------------------------------------------------------" >> $outfile
       fi
     done <<< "$pods"    
     sleep 15
@@ -252,6 +256,7 @@ helm_upgrade() {
     echo "Exiting after diff"
   else
     echo "Running command helm ${helm_echo_args[@]}"
+    set +e
     $helm_bin "${helm_args[@]}" $tls_flag > "$logfile" &
     # note that we have to remove the tee in the above line because if we don't the helm_pid will be the pid of the tee process
     # we are running both $helm_bin and helm_log_upgrade in the background so we can see the logs of the helm upgrade
@@ -264,9 +269,8 @@ helm_upgrade() {
     helm_log_pid=$!
     wait $helm_pid
     helm_exit_status=$?
-    kill -9 $tail_pid 
+    kill $tail_pid 
     wait $tail_pid 2>/dev/null # removes the "Killed" message
-    kill -9 $helm_log_pid 
     wait $helm_log_pid 2>/dev/null # removes the "Killed" message
     if [ "$helm_exit_status" -ne 0 ]; then
       echo "$helm_bin failed with exit code $helm_exit_status"
