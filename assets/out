@@ -1,8 +1,6 @@
 #!/bin/bash
 
 set -e
-set -o pipefail
-
 exec 3>&1 # make stdout available as fd 3 for the result
 exec 1>&2 # redirect all output to stderr for logging
 
@@ -130,6 +128,51 @@ current_deployed() {
   $helm_bin history $tls_flag --tiller-namespace $tiller_namespace --max 1 $release | grep "DEPLOYED"
 }
 
+# Function: helm_log_upgrade
+# Description: This function continuously checks the status of pods in a Kubernetes namespace after a Helm upgrade. 
+# It retrieves the pods with a specific label and prints their names and statuses. 
+# If a pod is not in the "Running" state, it prints the pod's logs and events.
+# Parameters:
+#   - release: The name of the Helm release
+#   - namespace: The Kubernetes namespace where the release is deployed
+# This function is meant to be run in the background concurrently with the helm upgrade command
+podLogsDir=/tmp/pod_logs
+helm_log_upgrade() {
+  local helm_pid=$1  
+  mkdir -p $podLogsDir
+  app=$(echo "$release" | cut -d'-' -f1)
+  # This while loop checks if the process $helm_pid is still running.
+  # The kill command with the signal 0 is used to check if the process exists without actually sending a SIGTERM signal.
+  # The output of the kill command is redirected to /dev/null to suppress any error messages.
+  while kill -0 $helm_pid 2>/dev/null
+  do    
+    pods=$(kubectl -n $namespace get pods -l app=$app --no-headers )
+    while IFS= read -r line; do
+      podName=$(echo $line | awk '{print $1}')
+      podStatus=$(echo $line | awk '{print $3}')    
+      outfile=$podLogsDir/$podName.log
+      rm -f $outfile
+      if [ "$podStatus" != "Running" ]
+      then
+        echo "Pod $podName is in $podStatus state" > $outfile
+        echo "Logs of $podName" >> $outfile
+        for container in $(kubectl -n $namespace get pod $podName -o jsonpath='{.spec.containers[*].name}')
+        do
+          if [[ $container != *"istio"* ]]; then
+            echo "container $container:" >> $outfile
+            kubectl -n $namespace logs $podName -c $container >> $outfile
+          fi
+        done
+        echo "----------------------------------------------------------------------------------" >> $outfile
+        echo "Events for pod $podName:" >> $outfile
+        kubectl -n $namespace describe pod $podName | awk '/Events:/{flag=1} flag' >> $outfile
+        echo "----------------------------------------------------------------------------------" >> $outfile
+      fi
+    done <<< "$pods"    
+    sleep 15
+  done
+}
+
 helm_upgrade() {
   non_diff_args=("--namespace" "$namespace")
   if [ "$release" = "" ]; then
@@ -208,14 +251,61 @@ helm_upgrade() {
       $helm_bin diff "${helm_diff_args[@]}" | tee "$logfile"
     fi
   fi
-
+  helm_exit_status=0
   if [ "$exit_after_diff" = true ]; then
     echo "Exiting after diff"
   else
-    echo "Running command helm ${helm_echo_args[@]} | tee $logfile"
-    $helm_bin "${helm_args[@]}" $tls_flag | tee "$logfile"
+    echo "Running command helm ${helm_echo_args[@]}"
+    set +e
+    $helm_bin "${helm_args[@]}" $tls_flag > "$logfile" &
+    # note that we have to remove the tee in the above line because if we don't the helm_pid will be the pid of the tee process
+    # we are running both $helm_bin and helm_log_upgrade in the background so we can see the logs of the helm upgrade
+    # in near real-time while also tailing the logs of the pods in the namespace
+    helm_pid=$!
+    tail -f "$logfile" &
+    tail_pid=$!
+    echo "helm_pid: $helm_pid"
+    helm_log_upgrade $helm_pid &
+    helm_log_pid=$!
+    wait $helm_pid
+    helm_exit_status=$?
+    kill $tail_pid 
+    wait $tail_pid 2>/dev/null # removes the "Killed" message
+    wait $helm_log_pid 2>/dev/null
+    if [ "$helm_exit_status" -ne 0 ]; then
+      echo "$helm_bin failed with exit code $helm_exit_status"
+      echo "namespace: $namespace release: $release"
+      echo "*******************"
+      echo "* pod Logs/Events *"
+      echo "*******************"
+      echo ""
+      for f in $podLogsDir/*; do
+        echo "=================================================================================="
+        cat $f
+      done
+      echo ""
+      echo "******************"
+      echo "* kubectl events *"
+      echo "******************"
+      echo ""
+      cmd="kubectl get events --namespace $namespace --sort-by='.lastTimestamp' | grep -i $release"
+      echo "Running command $cmd"
+      eval $cmd
+      echo ""
+      echo "****************"
+      echo "* helm history *"
+      echo "****************"
+      echo ""
+      echo "=================================================================================="
+      cmd="helm history $release --tiller-namespace $tiller_namespace"
+      echo "Running command $cmd"
+      eval $cmd
+      echo "Rollback"
+      set -e
+      exit $helm_exit_status
+    fi
   fi
-
+  
   if [ -n "$wait" ] && [ "$wait" -gt "0" ]; then
     echo "Waiting for $wait Seconds"
     sleep $wait
