@@ -137,10 +137,10 @@ current_deployed() {
 #   - namespace: The Kubernetes namespace where the release is deployed
 # This function is meant to be run in the background concurrently with the helm upgrade command
 podLogsDir=/tmp/pod_logs
+app=$(echo "$release" | cut -d'-' -f1)
 helm_log_upgrade() {
   local helm_pid=$1  
   mkdir -p $podLogsDir
-  app=$(echo "$release" | cut -d'-' -f1)
   # This while loop checks if the process $helm_pid is still running.
   # The kill command with the signal 0 is used to check if the process exists without actually sending a SIGTERM signal.
   # The output of the kill command is redirected to /dev/null to suppress any error messages.
@@ -279,10 +279,21 @@ helm_upgrade() {
       echo "* pod Logs/Events *"
       echo "*******************"
       echo ""
-      for f in $podLogsDir/*; do
-        echo "=================================================================================="
-        cat $f
-      done
+      if [ -n "$(ls -A $podLogsDir)" ]; then
+        for f in $podLogsDir/*; do
+          echo "=================================================================================="
+          cat $f
+        done
+      else
+        echo "$podLogsDir is empty.  This means that the pods are still running but have not error'd out."
+        echo "There is probably application logic that is preventing this pod from reaching a ready state."
+        echo "You should check the logs for the pods in the namespace $namespace"
+        echo "Dumping logs of of $app in the namespace $namespace ..."
+        cmd="kubectl -n $namespace logs -l app=$app"
+        echo "Running command $cmd"
+      eval $cmd
+      fi
+
       echo ""
       echo "******************"
       echo "* kubectl events *"
